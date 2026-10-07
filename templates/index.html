@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ParkiTrace</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0b1230;--navy2:#16214d;--pearl:#eceff5;--card:#fff;--gold:#c8a869;--gold2:#e6d3a3;--ink:#121a38;--mute:#68708a;--line:#dde1ec;--low:#2f8a5b;--med:#c28a1d;--high:#c0412a}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--pearl);color:var(--ink);font:16px/1.6 Manrope,system-ui,sans-serif}
+.hero{position:relative;overflow:hidden;color:#f3efe4;padding:72px 24px 150px;
+ background:radial-gradient(900px 500px at 82% 20%,#243a8a55,transparent 60%),linear-gradient(160deg,var(--navy),var(--navy2))}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,#ffffff10 50%,transparent 60%);transform:translateX(-120%);animation:sheen 3.2s 1.6s ease-out 1 forwards;pointer-events:none}
+@keyframes sheen{to{transform:translateX(120%)}}
+.wrap{max-width:1040px;margin:0 auto;position:relative}
+.hero .wrap{display:grid;grid-template-columns:1.2fr .8fr;gap:32px;align-items:center}
+.brand{font:600 1rem Manrope;letter-spacing:.18em;color:var(--gold2);margin-bottom:22px;display:flex;align-items:center;gap:10px}
+.brand i{width:28px;height:1px;background:var(--gold)}
+h1{font:600 clamp(2.8rem,7vw,5rem)/.98 "Cormorant Garamond",Georgia,serif;margin:0 0 18px;letter-spacing:-.01em}
+h1 span{background:linear-gradient(90deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:#b9c0dc;max-width:46ch;margin:0}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.pills b{font:500 .8rem Manrope;color:var(--gold2);border:1px solid #c8a86955;padding:5px 12px;border-radius:99px;background:#ffffff08;backdrop-filter:blur(6px)}
+#spiral{width:100%;max-width:330px;justify-self:center;filter:drop-shadow(0 0 18px #c8a86955)}
+#spiral path{fill:none;stroke:url(#g);stroke-width:2.2;stroke-linecap:round}
+.panel{max-width:1040px;margin:-96px auto 0;padding:0 24px 72px;position:relative}
+.glass{background:#ffffffee;backdrop-filter:blur(14px);border:1px solid #fff;border-radius:20px;padding:28px;box-shadow:0 30px 60px -28px #0b123066,0 2px 0 #fff inset}
+.pick{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.drop{position:relative;display:block;border-radius:14px;padding:30px 20px;text-align:center;cursor:pointer;color:var(--mute);font-size:.92rem;
+ background:linear-gradient(#fff,#f6f7fb) padding-box,linear-gradient(135deg,var(--gold),#c8a86933 40%,var(--gold)) border-box;border:1.5px solid transparent;transition:transform .25s,box-shadow .25s}
+.drop:hover,.drop:focus-within{transform:translateY(-3px);box-shadow:0 14px 28px -14px #c8a869aa}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop svg{width:34px;height:34px;stroke:var(--gold);fill:none;stroke-width:1.5;margin-bottom:8px}
+.drop strong{display:block;font:700 1.45rem "Cormorant Garamond",serif;color:var(--ink)}
+.tip{color:var(--mute);font-size:.85rem;margin:14px 2px 0}
+.stage{display:none;margin-top:22px;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.frame{position:relative;width:160px;height:160px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fff}
+.frame img{width:100%;height:100%;object-fit:contain;display:block}
+.frame.scan::after{content:"";position:absolute;left:0;right:0;height:34%;background:linear-gradient(transparent,#c8a86966,transparent);border-bottom:2px solid var(--gold);animation:scan 1.3s ease-in-out infinite alternate}
+@keyframes scan{from{top:-34%}to{top:100%}}
+button{background:linear-gradient(135deg,#1d2c66,var(--navy));color:var(--gold2);border:1px solid var(--gold);border-radius:99px;padding:14px 32px;font:600 1rem Manrope;cursor:pointer;box-shadow:0 10px 24px -10px #0b1230aa;transition:transform .2s,box-shadow .2s}
+button:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 16px 28px -12px #0b1230cc}
+button:disabled{opacity:.55;cursor:not-allowed}
+a:focus-visible,button:focus-visible,.drop:focus-within{outline:3px solid #8fa5ee;outline-offset:3px}
+#err{color:var(--high);min-height:1.4em;margin-top:10px;font-weight:500}
+#out{display:none;margin-top:28px;animation:rise .7s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}}
+.res{display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center}
+.ring{position:relative;width:170px;height:170px}
+.ring svg{transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:var(--line)}
+.ring .fg{stroke:var(--gold);stroke-linecap:round;stroke-dasharray:440;stroke-dashoffset:440;transition:stroke-dashoffset 1.4s cubic-bezier(.2,.8,.2,1)}
+.ring div{position:absolute;inset:0;display:grid;place-content:center;text-align:center;font:600 2.4rem "Cormorant Garamond",serif}
+.ring small{display:block;font:500 .72rem Manrope;color:var(--mute)}
+.badge{display:inline-block;color:#fff;font:600 .85rem Manrope;padding:5px 16px;border-radius:99px;letter-spacing:.06em}
+h2{font:700 1.9rem/1.15 "Cormorant Garamond",serif;margin:8px 0 14px}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 22px;margin:0;font-size:.95rem}
+dt{color:var(--mute)}dd{margin:0;font-weight:600}
+.imgs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:28px 0 8px}
+.imgs figure{margin:0}.imgs img{width:100%;border-radius:12px;border:1px solid var(--line);background:#fff;box-shadow:0 12px 26px -16px #0b123088}
+figcaption{font-size:.82rem;color:var(--mute);margin-top:8px}
+.btn{display:inline-block;margin-top:14px;color:var(--navy);font-weight:600;text-decoration:none;border-bottom:1.5px solid var(--gold);padding-bottom:2px}
+.note{font-size:.82rem;color:var(--mute);margin:24px 0 0;padding-top:16px;border-top:1px solid var(--line)}
+@media(max-width:760px){.hero .wrap{grid-template-columns:1fr}#spiral{max-width:200px;grid-row:1}.hero{padding-top:48px}.pick,.imgs,.res{grid-template-columns:1fr}.ring{margin:auto}.stage{justify-content:center}}
+@media(prefers-reduced-motion:reduce){*,*::after{animation:none!important;transition:none!important}}
+</style></head><body>
+<header class="hero"><div class="wrap">
+ <div>
+  <div class="brand"><i></i>HANDWRITING SCREENING</div>
+  <h1>Parki<span>Trace</span></h1>
+  <p class="lead">A single drawing, read by two neural networks. ParkiTrace looks for the small, shaky strokes linked to early Parkinson's disease and shows you exactly where it looked.</p>
+  <div class="pills"><b>EfficientNetV2</b><b>Vision Transformer</b><b>Grad-CAM</b><b>PDF report</b></div>
+ </div>
+ <svg id="spiral" viewBox="0 0 400 400" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6d3a3"/><stop offset="1" stop-color="#c8a869"/></linearGradient></defs><path id="sp" d=""/></svg>
+</div></header>
+
+<main class="panel"><div class="glass">
+ <div class="pick">
+  <label class="drop"><input type="file" id="cam" accept="image/*" capture="environment">
+   <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><strong>Take a photo</strong>Opens your phone camera</label>
+  <label class="drop"><input type="file" id="file" accept="image/*">
+   <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg><strong>Choose from gallery</strong>PNG or JPG of a spiral, wave or sentence</label>
+ </div>
+ <p class="tip">Photograph the drawing flat, from directly above, in good light.</p>
+ <div class="stage" id="stage">
+  <div class="frame" id="frame"><img id="prev" alt="Selected handwriting"></div>
+  <button id="go" disabled>Analyse handwriting</button>
+ </div>
+ <div id="err" role="alert"></div>
+
+ <section id="out" aria-live="polite">
+  <div class="res">
+   <div class="ring"><svg width="170" height="170" viewBox="0 0 170 170"><circle class="bg" cx="85" cy="85" r="70"/><circle class="fg" id="fg" cx="85" cy="85" r="70"/></svg>
+    <div><span id="conf">0%</span><small>confidence</small></div></div>
+   <div>
+    <span class="badge" id="risk"></span>
+    <h2 id="pred"></h2>
+    <dl><dt>Patient ID</dt><dd id="id"></dd><dt>Date and time</dt><dd id="time"></dd><dt>Recommendation</dt><dd id="rec"></dd></dl>
+    <a class="btn" id="pdf" href="#">Download PDF report</a>
+   </div>
+  </div>
+  <div class="imgs">
+   <figure><img id="o" alt="Submitted handwriting"><figcaption>Submitted handwriting</figcaption></figure>
+   <figure><img id="h" alt="Grad-CAM heatmap"><figcaption>Grad-CAM: warmer areas influenced the result most</figcaption></figure>
+  </div>
+  <p class="note">This is an AI-assisted screening result, not a diagnosis. A qualified medical professional must review it.</p>
+ </section>
+</div></main>
+
+<script>
+const $=id=>document.getElementById(id);let chosen=null;
+// hero spiral draws itself once
+(()=>{let d="";for(let t=0;t<=6*Math.PI;t+=.05){const r=6+10.2*t;d+=(t?"L":"M")+(200+r*Math.cos(t)).toFixed(1)+" "+(200+r*Math.sin(t)).toFixed(1)}
+ const p=$("sp");p.setAttribute("d",d);const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;
+ if(!matchMedia("(prefers-reduced-motion:reduce)").matches)p.animate([{strokeDashoffset:L},{strokeDashoffset:0}],{duration:3400,easing:"ease-in-out",fill:"forwards"});
+ else p.style.strokeDashoffset=0})();
+const pick=e=>{const x=e.target.files[0];if(!x)return;chosen=x;$("prev").src=URL.createObjectURL(x);
+ $("stage").style.display="flex";$("go").disabled=false;$("err").textContent="";$("out").style.display="none"};
+$("file").onchange=pick;$("cam").onchange=pick;
+const COL={LOW:"var(--low)",MEDIUM:"var(--med)",HIGH:"var(--high)"};
+function count(el,to){const t0=performance.now();(function f(t){const k=Math.min(1,(t-t0)/1300);el.textContent=(to*(1-Math.pow(1-k,3))).toFixed(1)+"%";if(k<1)requestAnimationFrame(f)})(t0)}
+$("go").onclick=async()=>{
+ const b=$("go");b.disabled=true;b.textContent="Analysing…";$("frame").classList.add("scan");$("err").textContent="";
+ const fd=new FormData();fd.append("image",chosen);
+ try{
+  const r=await fetch("/predict",{method:"POST",body:fd}),d=await r.json();
+  if(!r.ok)throw new Error(d.error||"Analysis failed.");
+  $("o").src="data:image/png;base64,"+d.original;$("h").src="data:image/png;base64,"+d.heatmap;
+  $("id").textContent=d.id;$("pred").textContent=d.prediction;$("time").textContent=d.time;$("rec").textContent=d.recommendation;
+  $("risk").textContent=d.risk+" RISK";$("risk").style.background=COL[d.risk];$("pdf").href="/report/"+d.id;
+  $("out").style.display="block";count($("conf"),d.confidence);
+  const fg=$("fg");fg.style.strokeDashoffset=440;requestAnimationFrame(()=>requestAnimationFrame(()=>fg.style.strokeDashoffset=440*(1-d.confidence/100)));
+  $("out").scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(e){$("err").textContent=e.message}
+ $("frame").classList.remove("scan");b.disabled=false;b.textContent="Analyse handwriting";
+};
+</script></body></html>
