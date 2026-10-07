@@ -1,0 +1,9 @@
+venv
+__pycache__/
+*.pyc
+.git/
+dataset/
+model/parkitrace.pt
+model/parkitrace_backup.pt
+model/*.pt
+!model/parkitrace_fp16.pt
