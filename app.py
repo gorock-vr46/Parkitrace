@@ -26,7 +26,7 @@ from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, S
 from parkitrace_model import CLASSES, ParkiTraceNet, gradcam, overlay, preprocess
 
 app = Flask(__name__)
-WEIGHTS = os.path.join("model", "parkitrace.pt")
+WEIGHTS = os.path.join("model", "parkitrace_fp16.pt")
 net = None
 lock = threading.Lock()
 results = {}
