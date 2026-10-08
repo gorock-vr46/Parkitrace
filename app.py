@@ -26,6 +26,10 @@ from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, S
 
 from parkitrace_model import CLASSES, ParkiTraceNet, gradcam, overlay, preprocess
 
+# Restrict PyTorch thread count to limit memory worker allocation
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+
 app = Flask(__name__)
 WEIGHTS = os.path.join("model", "parkitrace_fp16.pt")
 net = None
@@ -46,6 +50,9 @@ def load_model():
         net = ParkiTraceNet(pretrained=False)
         net.load_state_dict(checkpoint["state"])
         net.eval()
+        # Optimize memory usage of backbone parameters
+        for param in net.parameters():
+            param.requires_grad = False
     return net
 
 
@@ -86,13 +93,17 @@ def predict():
     try:
         model = load_model()
         x, rgb = preprocess(bgr)
+        
         with lock:
             with torch.inference_mode():
-                probs = torch.softmax(model(x), dim=1)[0].cpu().numpy()
+                out = model(x)
+                probs = torch.softmax(out, dim=1)[0].cpu().numpy()
+            
             cls = int(np.argmax(probs))
             cam = gradcam(model, x, cls)
 
-        # Trigger garbage collection to immediately free peak execution memory
+        # Force immediate memory reclamation
+        del x, bgr, out
         gc.collect()
 
         p_pd = float(probs[CLASSES.index("parkinson")])
