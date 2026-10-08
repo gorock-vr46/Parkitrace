@@ -59,21 +59,35 @@ def preprocess(bgr):
 
 
 def gradcam(model, x, cls):
-    """Grad-CAM for the EfficientNet feature branch."""
+    """Grad-CAM for the EfficientNet feature branch with optimized memory allocation."""
     was_training = model.training
     model.eval()
-    model.zero_grad(set_to_none=True)
+
+    # Freeze model parameters so autograd does not store unwanted layer gradients in RAM
+    for param in model.parameters():
+        param.requires_grad = False
+
+    x_in = x.detach().clone()
+    x_in.requires_grad = True
+
     with torch.enable_grad():
-        out, fmap = model(x, return_fmap=True)
-        fmap.retain_grad()
-        out[0, cls].backward()
-    weights = fmap.grad.mean(dim=(2, 3), keepdim=True)
+        out, fmap = model(x_in, return_fmap=True)
+        score = out[0, cls]
+        grads = torch.autograd.grad(score, fmap, retain_graph=False, create_graph=False)[0]
+
+    weights = grads.mean(dim=(2, 3), keepdim=True)
     cam = torch.relu((weights * fmap).sum(dim=1))[0].detach().cpu().numpy()
+
+    # Explicitly clear graph tensors
+    del fmap, grads, out, x_in
+    model.zero_grad(set_to_none=True)
+
     cam -= cam.min()
     max_value = cam.max()
     if max_value > 0:
         cam /= max_value
     cam = cv2.resize(cam, (224, 224), interpolation=cv2.INTER_LINEAR)
+
     if was_training:
         model.train()
     return cam
