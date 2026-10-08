@@ -6,6 +6,7 @@ Run:
 Then open http://127.0.0.1:5000
 """
 import base64
+import gc
 import io
 import os
 import threading
@@ -86,10 +87,13 @@ def predict():
         model = load_model()
         x, rgb = preprocess(bgr)
         with lock:
-            with torch.no_grad():
+            with torch.inference_mode():
                 probs = torch.softmax(model(x), dim=1)[0].cpu().numpy()
             cls = int(np.argmax(probs))
             cam = gradcam(model, x, cls)
+
+        # Trigger garbage collection to immediately free peak execution memory
+        gc.collect()
 
         p_pd = float(probs[CLASSES.index("parkinson")])
         patient_id = f"PT-{uuid.uuid4().hex[:8].upper()}"
