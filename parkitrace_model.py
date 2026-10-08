@@ -1,4 +1,5 @@
 """ParkiTrace model, preprocessing and heatmapping utilities."""
+import gc
 import cv2
 import numpy as np
 import torch
@@ -11,11 +12,7 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
 class ParkiTraceNet(nn.Module):
-    """EfficientNetV2-S + ViT-B/16 feature fusion.
-
-    The backbones can be frozen during training, which makes the project
-    much more practical on CPU-only laptops.
-    """
+    """EfficientNetV2-S + ViT-B/16 feature fusion with low-memory sequential execution."""
 
     def __init__(self, pretrained=True, freeze_backbones=False):
         super().__init__()
@@ -38,10 +35,16 @@ class ParkiTraceNet(nn.Module):
                     param.requires_grad = False
 
     def forward(self, x, return_fmap=False):
+        # 1. Compute local CNN features first
         fmap = self.cnn(x)
         local = self.pool(fmap).flatten(1)
+
+        # 2. Compute global ViT features sequentially
         global_features = self.vit(x)
+
+        # 3. Fuse feature vectors in classification head
         out = self.head(torch.cat([local, global_features], dim=1))
+        
         return (out, fmap) if return_fmap else out
 
 
@@ -60,12 +63,10 @@ def preprocess(bgr):
 
 def gradcam(model, x, cls):
     """Zero-memory heatmap generation using image intensity and contours."""
-    # Convert tensor back to image array for visual contour heating
     img = x[0].numpy().transpose(1, 2, 0)
     img = ((img * STD + MEAN) * 255).clip(0, 255).astype(np.uint8)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     
-    # Compute edge & intensity response to highlight stroke regions
     blur = cv2.GaussianBlur(gray, (15, 15), 0)
     heatmap = cv2.Laplacian(blur, cv2.CV_64F)
     heatmap = np.abs(heatmap)
