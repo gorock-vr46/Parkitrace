@@ -26,7 +26,7 @@ from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, S
 
 from parkitrace_model import CLASSES, ParkiTraceNet, gradcam, overlay, preprocess
 
-# Restrict PyTorch thread count to limit RAM allocation per request
+# Cap single-thread CPU execution to prevent memory spikes
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
@@ -48,17 +48,13 @@ def load_model():
         if checkpoint.get("classes") != CLASSES:
             raise RuntimeError("The saved model uses incompatible class labels.")
         
-        raw_net = ParkiTraceNet(pretrained=False)
-        raw_net.load_state_dict(checkpoint["state"])
-        raw_net.eval()
+        net = ParkiTraceNet(pretrained=False)
+        net.load_state_dict(checkpoint["state"])
+        net.eval()
         
-        for param in raw_net.parameters():
+        for param in net.parameters():
             param.requires_grad = False
-
-        # Dynamically quantize Linear layers to qint8 to drop memory footprint by ~65%
-        net = torch.ao.quantization.quantize_dynamic(
-            raw_net, {torch.nn.Linear}, dtype=torch.qint8
-        )
+            
     return net
 
 
@@ -103,4 +99,106 @@ def predict():
         with lock:
             with torch.inference_mode():
                 out = model(x)
-                probs = torch.softmax(out, dim
+                probs = torch.softmax(out, dim=1)[0].cpu().numpy()
+            
+            cls = int(np.argmax(probs))
+            cam = gradcam(model, x, cls)
+
+        del x, bgr, out
+        gc.collect()
+
+        p_pd = float(probs[CLASSES.index("parkinson")])
+        patient_id = f"PT-{uuid.uuid4().hex[:8].upper()}"
+        is_pd = CLASSES[cls] == "parkinson"
+        result = {
+            "id": patient_id,
+            "prediction": "PARKINSON'S DISEASE" if is_pd else "HEALTHY",
+            "confidence": round(float(probs[cls]) * 100, 1),
+            "risk": risk_level(p_pd),
+            "recommendation": (
+                "This screening result should be reviewed by a qualified neurologist or physician."
+                if p_pd >= 0.40
+                else "No Parkinson's-pattern signal was detected by this model. Re-screening does not replace medical evaluation."
+            ),
+            "time": datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %H:%M IST"),
+            "original": png_b64(rgb),
+            "heatmap": png_b64(overlay(rgb, cam)),
+        }
+        results[patient_id] = result
+        return jsonify(result)
+
+    except FileNotFoundError as exc:
+        return jsonify(error=str(exc)), 503
+    except Exception:
+        app.logger.exception("Prediction failed")
+        return jsonify(error="Analysis failed. Check the terminal for the technical error."), 500
+
+
+@app.get("/report/<patient_id>")
+def report(patient_id):
+    result = results.get(patient_id)
+    if not result:
+        return "Report expired or patient ID was not found. Run the analysis again.", 404
+
+    buffer = io.BytesIO()
+    styles = getSampleStyleSheet()
+    normal = styles["Normal"]
+
+    def report_image(key):
+        return RLImage(
+            io.BytesIO(base64.b64decode(result[key])),
+            width=6.3 * cm,
+            height=6.3 * cm,
+        )
+
+    table = Table(
+        [
+            ["Patient ID", result["id"]],
+            ["Prediction", result["prediction"]],
+            ["Detection confidence", f'{result["confidence"]}%'],
+            ["Risk level", result["risk"]],
+            ["Date and time", result["time"]],
+            ["Recommendation", Paragraph(result["recommendation"], normal)],
+        ],
+        colWidths=[5 * cm, 11 * cm],
+    )
+    table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+    ]))
+
+    images = Table([
+        [report_image("original"), report_image("heatmap")],
+        ["Submitted handwriting", "Grad-CAM heatmap"],
+    ], colWidths=[8 * cm, 8 * cm])
+    images.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+
+    SimpleDocTemplate(buffer, pagesize=A4, title="ParkiTrace Screening Report").build([
+        Paragraph("ParkiTrace Screening Report", styles["Title"]),
+        Paragraph("AI-assisted handwriting screening research prototype", styles["Italic"]),
+        Spacer(1, 14),
+        table,
+        Spacer(1, 18),
+        images,
+        Spacer(1, 18),
+        Paragraph(
+            "Important: This is a research screening prototype, not a medical diagnosis. "
+            "The result must not be used alone to diagnose or rule out Parkinson's disease.",
+            styles["Italic"],
+        ),
+    ])
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"ParkiTrace_{patient_id}.pdf",
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)
