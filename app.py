@@ -1,4 +1,4 @@
-"""ParkiTrace Flask app.
+"""ParkiTrace Flask app using ONNX Runtime.
 
 Run:
     python app.py
@@ -16,7 +16,6 @@ from zoneinfo import ZoneInfo
 
 import cv2
 import numpy as np
-import torch
 from flask import Flask, jsonify, render_template, request, send_file
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -24,38 +23,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from parkitrace_model import CLASSES, ParkiTraceNet, gradcam, overlay, preprocess
-
-# Cap single-thread CPU execution to prevent memory spikes
-torch.set_num_threads(1)
-torch.set_num_interop_threads(1)
+from parkitrace_model import CLASSES, gradcam, overlay, predict_onnx, preprocess
 
 app = Flask(__name__)
-WEIGHTS = os.path.join("model", "parkitrace_fp16.pt")
-net = None
 lock = threading.Lock()
 results = {}
-
-
-def load_model():
-    global net
-    if net is None:
-        if not os.path.isfile(WEIGHTS):
-            raise FileNotFoundError(
-                "No trained model found. Run: python train.py --data dataset --epochs 15"
-            )
-        checkpoint = torch.load(WEIGHTS, map_location="cpu", weights_only=False)
-        if checkpoint.get("classes") != CLASSES:
-            raise RuntimeError("The saved model uses incompatible class labels.")
-        
-        net = ParkiTraceNet(pretrained=False)
-        net.load_state_dict(checkpoint["state"])
-        net.eval()
-        
-        for param in net.parameters():
-            param.requires_grad = False
-            
-    return net
 
 
 def png_b64(rgb):
@@ -93,18 +65,14 @@ def predict():
         return jsonify(error="Unreadable image. Please use a PNG or JPG photo."), 400
 
     try:
-        model = load_model()
         x, rgb = preprocess(bgr)
         
         with lock:
-            with torch.inference_mode():
-                out = model(x)
-                probs = torch.softmax(out, dim=1)[0].cpu().numpy()
-            
+            probs = predict_onnx(x)
             cls = int(np.argmax(probs))
-            cam = gradcam(model, x, cls)
+            cam = gradcam(None, x, cls)
 
-        del x, bgr, out
+        del x, bgr
         gc.collect()
 
         p_pd = float(probs[CLASSES.index("parkinson")])
