@@ -70,7 +70,7 @@ def predict():
         with lock:
             probs = predict_onnx(x)
             cls = int(np.argmax(probs))
-            cam = gradcam(None, x, cls)
+            cam = gradcam(x, cls)
 
         del x, bgr
         gc.collect()
@@ -99,7 +99,7 @@ def predict():
         return jsonify(error=str(exc)), 503
     except Exception:
         app.logger.exception("Prediction failed")
-        return jsonify(error="Analysis failed. Check the terminal for the technical error."), 500
+        return jsonify(error="Analysis failed. Check the server logs for details."), 500
 
 
 @app.get("/report/<patient_id>")
@@ -169,4 +169,5 @@ def report(patient_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)

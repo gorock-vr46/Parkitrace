@@ -8,7 +8,8 @@ CLASSES = ["healthy", "parkinson"]
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-ONNX_PATH = os.path.join("model", "parkitrace.onnx")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ONNX_PATH = os.path.join(BASE_DIR, "model", "parkitrace.onnx")
 _session = None
 
 
@@ -48,7 +49,7 @@ def predict_onnx(tensor):
     return probs
 
 
-def gradcam(_, x, cls):
+def gradcam(x, cls):
     """Low-memory contour heatmap generation."""
     img = x[0].transpose(1, 2, 0)
     img = ((img * STD + MEAN) * 255).clip(0, 255).astype(np.uint8)
