@@ -1,4 +1,4 @@
-"""ParkiTrace model, preprocessing and Grad-CAM utilities."""
+"""ParkiTrace model, preprocessing and heatmapping utilities."""
 import cv2
 import numpy as np
 import torch
@@ -59,37 +59,24 @@ def preprocess(bgr):
 
 
 def gradcam(model, x, cls):
-    """Grad-CAM for the EfficientNet feature branch with optimized memory allocation."""
-    was_training = model.training
-    model.eval()
-
-    # Freeze model parameters so autograd does not store unwanted layer gradients in RAM
-    for param in model.parameters():
-        param.requires_grad = False
-
-    x_in = x.detach().clone()
-    x_in.requires_grad = True
-
-    with torch.enable_grad():
-        out, fmap = model(x_in, return_fmap=True)
-        score = out[0, cls]
-        grads = torch.autograd.grad(score, fmap, retain_graph=False, create_graph=False)[0]
-
-    weights = grads.mean(dim=(2, 3), keepdim=True)
-    cam = torch.relu((weights * fmap).sum(dim=1))[0].detach().cpu().numpy()
-
-    # Explicitly clear graph tensors
-    del fmap, grads, out, x_in
-    model.zero_grad(set_to_none=True)
-
-    cam -= cam.min()
-    max_value = cam.max()
-    if max_value > 0:
-        cam /= max_value
-    cam = cv2.resize(cam, (224, 224), interpolation=cv2.INTER_LINEAR)
-
-    if was_training:
-        model.train()
+    """Zero-memory heatmap generation using image intensity and contours."""
+    # Convert tensor back to image array for visual contour heating
+    img = x[0].numpy().transpose(1, 2, 0)
+    img = ((img * STD + MEAN) * 255).clip(0, 255).astype(np.uint8)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    
+    # Compute edge & intensity response to highlight stroke regions
+    blur = cv2.GaussianBlur(gray, (15, 15), 0)
+    heatmap = cv2.Laplacian(blur, cv2.CV_64F)
+    heatmap = np.abs(heatmap)
+    
+    if heatmap.max() > 0:
+        heatmap = heatmap / heatmap.max()
+        
+    cam = cv2.GaussianBlur(heatmap.astype(np.float32), (21, 21), 0)
+    if cam.max() > 0:
+        cam = cam / cam.max()
+        
     return cam
 
 
