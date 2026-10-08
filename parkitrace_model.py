@@ -1,51 +1,27 @@
-"""ParkiTrace model, preprocessing and heatmapping utilities."""
-import gc
+"""ParkiTrace model preprocessing, ONNX inference, and heatmapping utilities."""
+import os
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
-from torchvision import models
+import onnxruntime as ort
 
 CLASSES = ["healthy", "parkinson"]
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
+ONNX_PATH = os.path.join("model", "parkitrace.onnx")
+_session = None
 
-class ParkiTraceNet(nn.Module):
-    """EfficientNetV2-S + ViT-B/16 feature fusion with low-memory sequential execution."""
 
-    def __init__(self, pretrained=True, freeze_backbones=False):
-        super().__init__()
-        eff_weights = models.EfficientNet_V2_S_Weights.DEFAULT if pretrained else None
-        vit_weights = models.ViT_B_16_Weights.DEFAULT if pretrained else None
-        eff = models.efficientnet_v2_s(weights=eff_weights)
-        self.cnn = eff.features
-        self.vit = models.vit_b_16(weights=vit_weights)
-        self.vit.heads = nn.Identity()
-        self.pool = nn.AdaptiveAvgPool2d(1)
-        self.head = nn.Sequential(
-            nn.Linear(1280 + 768, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.35),
-            nn.Linear(512, 2),
-        )
-        if freeze_backbones:
-            for module in (self.cnn, self.vit):
-                for param in module.parameters():
-                    param.requires_grad = False
-
-    def forward(self, x, return_fmap=False):
-        # 1. Compute local CNN features first
-        fmap = self.cnn(x)
-        local = self.pool(fmap).flatten(1)
-
-        # 2. Compute global ViT features sequentially
-        global_features = self.vit(x)
-
-        # 3. Fuse feature vectors in classification head
-        out = self.head(torch.cat([local, global_features], dim=1))
-        
-        return (out, fmap) if return_fmap else out
+def load_onnx_session():
+    global _session
+    if _session is None:
+        if not os.path.exists(ONNX_PATH):
+            raise FileNotFoundError(f"ONNX model not found at {ONNX_PATH}")
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        _session = ort.InferenceSession(ONNX_PATH, sess_options=opts, providers=["CPUExecutionProvider"])
+    return _session
 
 
 def preprocess(bgr):
@@ -57,13 +33,24 @@ def preprocess(bgr):
         cv2.COLOR_BGR2RGB,
     )
     x = (rgb.astype(np.float32) / 255.0 - MEAN) / STD
-    tensor = torch.from_numpy(x.transpose(2, 0, 1)).unsqueeze(0).float()
+    tensor = np.expand_dims(x.transpose(2, 0, 1), axis=0).astype(np.float32)
     return tensor, rgb
 
 
-def gradcam(model, x, cls):
-    """Zero-memory heatmap generation using image intensity and contours."""
-    img = x[0].numpy().transpose(1, 2, 0)
+def predict_onnx(tensor):
+    session = load_onnx_session()
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: tensor})
+    logits = outputs[0][0]
+    # Softmax
+    exp_logits = np.exp(logits - np.max(logits))
+    probs = exp_logits / exp_logits.sum()
+    return probs
+
+
+def gradcam(_, x, cls):
+    """Low-memory contour heatmap generation."""
+    img = x[0].transpose(1, 2, 0)
     img = ((img * STD + MEAN) * 255).clip(0, 255).astype(np.uint8)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     
